@@ -1,0 +1,1695 @@
+import React, { useState, useEffect } from 'react';
+import { User, Calendar, Target, TrendingUp, Award, Plus, CheckCircle, Circle, Flame, Brain, Heart, BookOpen, Briefcase, Home, X, Edit, Trash2, Settings, BarChart3, Clock, Star, Save, Download, Upload } from 'lucide-react';
+
+interface Habit {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  streak: number;
+  completed: boolean;
+  completedDates: string[];
+  goal: number;
+  color: string;
+  createdAt: string;
+  bestStreak: number;
+  totalCompletions: number;
+  notes?: string;
+  reminder?: string;
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  joinDate: string;
+  totalHabits: number;
+  completedToday: number;
+  longestStreak: number;
+  badges: Badge[];
+  level: number;
+  xp: number;
+  avatar?: string;
+  timezone: string;
+  preferredTime: string;
+  notifications: boolean;
+  weekStartsOn: 'monday' | 'sunday';
+  theme: 'light' | 'dark' | 'auto';
+}
+
+interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  earnedAt: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+}
+
+interface Assessment {
+  strengths: string[];
+  weaknesses: string[];
+  goals: string[];
+  lifestyle: string;
+  profession: string;
+  badHabits: string[];
+  timeAvailable: string;
+  motivation: string;
+  sleepSchedule: string;
+  workSchedule: string;
+  stressLevel: number;
+  activityLevel: string;
+  previousExperience: string;
+  challenges: string[];
+  preferredHabitTime: string[];
+  priorityAreas: string[];
+}
+
+interface Recommendation {
+  id: string;
+  title: string;
+  description: string;
+  reason: string;
+  category: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  estimatedTime: string;
+  benefits: string[];
+  tips: string[];
+  priority: number;
+  personalizedReason: string;
+}
+
+const categories = [
+  { name: 'Health', icon: Heart, color: 'from-red-500 to-pink-500' },
+  { name: 'Productivity', icon: Target, color: 'from-blue-500 to-indigo-500' },
+  { name: 'Learning', icon: BookOpen, color: 'from-emerald-500 to-teal-500' },
+  { name: 'Mindfulness', icon: Brain, color: 'from-purple-500 to-violet-500' },
+  { name: 'Career', icon: Briefcase, color: 'from-orange-500 to-amber-500' },
+];
+
+const difficultyColors = {
+  easy: 'bg-green-100 text-green-800',
+  medium: 'bg-yellow-100 text-yellow-800',
+  hard: 'bg-red-100 text-red-800'
+};
+
+const badgeTemplates = [
+  { id: 'first-habit', name: 'Getting Started', description: 'Created your first habit', icon: '🌱', rarity: 'common' as const },
+  { id: 'week-streak', name: 'Week Warrior', description: '7-day streak achieved', icon: '🔥', rarity: 'common' as const },
+  { id: 'month-streak', name: 'Monthly Master', description: '30-day streak achieved', icon: '💪', rarity: 'rare' as const },
+  { id: 'early-bird', name: 'Early Bird', description: 'Completed habits before 8 AM', icon: '🌅', rarity: 'common' as const },
+  { id: 'consistency', name: 'Consistency King', description: 'Completed all habits for 5 days', icon: '👑', rarity: 'epic' as const },
+  { id: 'perfectionist', name: 'Perfectionist', description: '100% completion rate for a month', icon: '⭐', rarity: 'legendary' as const },
+  { id: 'dedicated', name: 'Dedicated', description: 'Maintained habits for 100 days', icon: '🏆', rarity: 'epic' as const },
+  { id: 'habit-master', name: 'Habit Master', description: 'Created 10 different habits', icon: '🎯', rarity: 'rare' as const },
+];
+
+function App() {
+  const [currentPage, setCurrentPage] = useState('landing');
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    id: '1',
+    name: '',
+    email: '',
+    joinDate: new Date().toISOString().split('T')[0],
+    totalHabits: 0,
+    completedToday: 0,
+    longestStreak: 0,
+    badges: [],
+    level: 1,
+    xp: 0,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    preferredTime: '09:00',
+    notifications: true,
+    weekStartsOn: 'monday',
+    theme: 'light'
+  });
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [assessmentStep, setAssessmentStep] = useState(0);
+  const [assessment, setAssessment] = useState<Partial<Assessment>>({});
+  const [showAddHabit, setShowAddHabit] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [showBadgeModal, setShowBadgeModal] = useState<Badge | null>(null);
+  const [profileSetupStep, setProfileSetupStep] = useState(0);
+  const [newHabitForm, setNewHabitForm] = useState({
+    title: '',
+    description: '',
+    category: 'Health',
+    difficulty: 'medium' as 'easy' | 'medium' | 'hard',
+    goal: 30,
+    notes: '',
+    reminder: ''
+  });
+
+  // Load data from localStorage on mount
+  useEffect(() => {
+    const savedHabits = localStorage.getItem('habits');
+    const savedProfile = localStorage.getItem('userProfile');
+    const savedAssessment = localStorage.getItem('assessment');
+    
+    if (savedHabits) {
+      setHabits(JSON.parse(savedHabits));
+    }
+    if (savedProfile) {
+      const profile = JSON.parse(savedProfile);
+      setUserProfile(profile);
+      // If user doesn't have name or email, show profile setup
+      if (!profile.name || !profile.email) {
+        setShowProfileSetup(true);
+      }
+    } else {
+      // New user - show profile setup
+      setShowProfileSetup(true);
+    }
+    if (savedAssessment) {
+      setAssessment(JSON.parse(savedAssessment));
+      if (Object.keys(JSON.parse(savedAssessment)).length > 0) {
+        generateRecommendations(JSON.parse(savedAssessment));
+      }
+    }
+  }, []);
+
+  // Save data to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('habits', JSON.stringify(habits));
+    updateUserProfile();
+  }, [habits]);
+
+  useEffect(() => {
+    localStorage.setItem('userProfile', JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('assessment', JSON.stringify(assessment));
+  }, [assessment]);
+
+  const updateUserProfile = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const completedToday = habits.filter(h => h.completedDates.includes(today)).length;
+    const longestStreak = Math.max(0, ...habits.map(h => h.bestStreak));
+    const totalXP = habits.reduce((sum, h) => sum + (h.totalCompletions * 10), 0);
+    const level = Math.floor(totalXP / 100) + 1;
+
+    setUserProfile(prev => ({
+      ...prev,
+      totalHabits: habits.length,
+      completedToday,
+      longestStreak,
+      xp: totalXP,
+      level
+    }));
+
+    // Check for new badges
+    checkForNewBadges();
+  };
+
+  const checkForNewBadges = () => {
+    const newBadges: Badge[] = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    // First habit badge
+    if (habits.length >= 1 && !userProfile.badges.some(b => b.id === 'first-habit')) {
+      newBadges.push({
+        ...badgeTemplates.find(b => b.id === 'first-habit')!,
+        earnedAt: today
+      });
+    }
+
+    // Week streak badge
+    if (habits.some(h => h.streak >= 7) && !userProfile.badges.some(b => b.id === 'week-streak')) {
+      newBadges.push({
+        ...badgeTemplates.find(b => b.id === 'week-streak')!,
+        earnedAt: today
+      });
+    }
+
+    // Month streak badge
+    if (habits.some(h => h.streak >= 30) && !userProfile.badges.some(b => b.id === 'month-streak')) {
+      newBadges.push({
+        ...badgeTemplates.find(b => b.id === 'month-streak')!,
+        earnedAt: today
+      });
+    }
+
+    // Habit master badge
+    if (habits.length >= 10 && !userProfile.badges.some(b => b.id === 'habit-master')) {
+      newBadges.push({
+        ...badgeTemplates.find(b => b.id === 'habit-master')!,
+        earnedAt: today
+      });
+    }
+
+    // Consistency badge
+    const completedToday = habits.filter(h => h.completedDates.includes(today)).length;
+    if (completedToday === habits.length && habits.length >= 3 && !userProfile.badges.some(b => b.id === 'consistency')) {
+      newBadges.push({
+        ...badgeTemplates.find(b => b.id === 'consistency')!,
+        earnedAt: today
+      });
+    }
+
+    if (newBadges.length > 0) {
+      setUserProfile(prev => ({
+        ...prev,
+        badges: [...prev.badges, ...newBadges]
+      }));
+      
+      // Show badge modal for the first new badge
+      setShowBadgeModal(newBadges[0]);
+    }
+  };
+
+  const generateRecommendations = (assessmentData: Partial<Assessment>) => {
+    const recs: Recommendation[] = [];
+
+    // Enhanced AI-powered recommendations based on comprehensive assessment
+    if (assessmentData.goals?.includes('Improve productivity')) {
+      if (assessmentData.stressLevel && assessmentData.stressLevel > 7) {
+        recs.push({
+          id: 'stress-management',
+          title: 'Stress Management Break',
+          description: 'Take a 10-minute break every 2 hours to reduce stress and improve focus',
+          reason: 'Your high stress level indicates you need regular breaks to maintain productivity',
+          personalizedReason: `Based on your stress level of ${assessmentData.stressLevel}/10, incorporating stress breaks will significantly improve your productivity.`,
+          category: 'Mindfulness',
+          difficulty: 'easy',
+          estimatedTime: '10 minutes',
+          benefits: ['Reduced stress', 'Better focus', 'Improved decision making'],
+          tips: ['Set a timer for every 2 hours', 'Use breathing exercises', 'Step away from your workspace'],
+          priority: 9
+        });
+      }
+
+      if (assessmentData.workSchedule === 'Work from home') {
+        recs.push({
+          id: 'home-productivity',
+          title: 'Dedicated Workspace Setup',
+          description: 'Create and maintain a dedicated workspace at home',
+          reason: 'Working from home requires clear boundaries to maintain productivity',
+          personalizedReason: 'Since you work from home, having a dedicated workspace will improve your focus and work-life balance.',
+          category: 'Productivity',
+          difficulty: 'medium',
+          estimatedTime: '30 minutes',
+          benefits: ['Better focus', 'Clear work-life boundaries', 'Professional mindset'],
+          tips: ['Choose a quiet corner', 'Keep it organized', 'Use it only for work'],
+          priority: 8
+        });
+      }
+    }
+
+    if (assessmentData.goals?.includes('Better health habits')) {
+      if (assessmentData.activityLevel === 'Sedentary (little to no exercise)') {
+        recs.push({
+          id: 'gentle-movement',
+          title: 'Gentle Daily Movement',
+          description: 'Start with 15 minutes of gentle movement like walking or stretching',
+          reason: 'Since you\'re currently sedentary, starting small will help build sustainable habits',
+          personalizedReason: 'Given your current activity level, gentle movement is the perfect starting point for building a healthy lifestyle.',
+          category: 'Health',
+          difficulty: 'easy',
+          estimatedTime: '15 minutes',
+          benefits: ['Increased energy', 'Better mood', 'Improved circulation'],
+          tips: ['Start with short walks', 'Use stairs instead of elevators', 'Stretch during TV time'],
+          priority: 10
+        });
+      }
+    }
+
+    if (assessmentData.goals?.includes('Learn new skills')) {
+      if (assessmentData.timeAvailable === '15-30 minutes') {
+        recs.push({
+          id: 'micro-learning',
+          title: 'Micro-Learning Sessions',
+          description: 'Dedicate 20 minutes daily to learning something new',
+          reason: 'Short, focused learning sessions are perfect for your available time',
+          personalizedReason: 'With your 15-30 minute availability, micro-learning will help you consistently build new skills.',
+          category: 'Learning',
+          difficulty: 'easy',
+          estimatedTime: '20 minutes',
+          benefits: ['Continuous growth', 'New perspectives', 'Career advancement'],
+          tips: ['Use apps like Duolingo', 'Watch educational videos', 'Read industry articles'],
+          priority: 7
+        });
+      }
+    }
+
+    if (assessmentData.sleepSchedule === 'Night owl (sleep after 12 AM, wake after 8 AM)') {
+      recs.push({
+        id: 'sleep-optimization',
+        title: 'Evening Wind-Down Routine',
+        description: 'Create a 30-minute wind-down routine before bed',
+        reason: 'As a night owl, establishing a consistent evening routine will improve sleep quality',
+        personalizedReason: 'Your night owl schedule can be optimized with a proper wind-down routine for better rest.',
+        category: 'Health',
+        difficulty: 'medium',
+        estimatedTime: '30 minutes',
+        benefits: ['Better sleep quality', 'More energy', 'Improved focus'],
+        tips: ['No screens 1 hour before bed', 'Try reading or meditation', 'Keep room cool and dark'],
+        priority: 8
+      });
+    }
+
+    if (assessmentData.challenges?.includes('Lack of motivation')) {
+      recs.push({
+        id: 'motivation-tracking',
+        title: 'Daily Wins Journal',
+        description: 'Write down 3 wins or positive moments from each day',
+        reason: 'Tracking positive moments helps build motivation and gratitude',
+        personalizedReason: 'Since motivation is a challenge for you, a wins journal will help you see progress and stay motivated.',
+        category: 'Mindfulness',
+        difficulty: 'easy',
+        estimatedTime: '10 minutes',
+        benefits: ['Increased motivation', 'Better mood', 'Clearer progress tracking'],
+        tips: ['Keep it simple', 'Include small wins', 'Review weekly for patterns'],
+        priority: 9
+      });
+    }
+
+    // Sort by priority and limit to top recommendations
+    recs.sort((a, b) => b.priority - a.priority);
+    setRecommendations(recs.slice(0, 6));
+  };
+
+  const exportData = () => {
+    const data = {
+      habits,
+      userProfile,
+      assessment,
+      exportDate: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `habitflow-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.habits) setHabits(data.habits);
+        if (data.userProfile) setUserProfile(data.userProfile);
+        if (data.assessment) setAssessment(data.assessment);
+        alert('Data imported successfully!');
+      } catch (error) {
+        alert('Error importing data. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Continue with the rest of the component functions...
+  const toggleHabit = (habitId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    setHabits(prevHabits => prevHabits.map(habit => {
+      if (habit.id === habitId) {
+        const isCompleted = !habit.completed;
+        const newCompletedDates = isCompleted 
+          ? [...habit.completedDates.filter(date => date !== today), today]
+          : habit.completedDates.filter(date => date !== today);
+        
+        const newStreak = isCompleted ? habit.streak + 1 : Math.max(0, habit.streak - 1);
+        const newBestStreak = Math.max(habit.bestStreak, newStreak);
+        const newTotalCompletions = isCompleted ? habit.totalCompletions + 1 : Math.max(0, habit.totalCompletions - 1);
+
+        return {
+          ...habit,
+          completed: isCompleted,
+          completedDates: newCompletedDates,
+          streak: newStreak,
+          bestStreak: newBestStreak,
+          totalCompletions: newTotalCompletions
+        };
+      }
+      return habit;
+    }));
+  };
+
+  const addHabit = () => {
+    if (!newHabitForm.title.trim()) return;
+
+    const categoryColor = categories.find(c => c.name === newHabitForm.category)?.color || 'from-gray-400 to-gray-500';
+    
+    const newHabit: Habit = {
+      id: Date.now().toString(),
+      title: newHabitForm.title,
+      description: newHabitForm.description,
+      category: newHabitForm.category,
+      difficulty: newHabitForm.difficulty,
+      goal: newHabitForm.goal,
+      color: categoryColor,
+      streak: 0,
+      completed: false,
+      completedDates: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      bestStreak: 0,
+      totalCompletions: 0,
+      notes: newHabitForm.notes,
+      reminder: newHabitForm.reminder
+    };
+
+    setHabits(prev => [...prev, newHabit]);
+    setNewHabitForm({
+      title: '',
+      description: '',
+      category: 'Health',
+      difficulty: 'medium',
+      goal: 30,
+      notes: '',
+      reminder: ''
+    });
+    setShowAddHabit(false);
+  };
+
+  const deleteHabit = (habitId: string) => {
+    if (confirm('Are you sure you want to delete this habit?')) {
+      setHabits(prev => prev.filter(h => h.id !== habitId));
+    }
+  };
+
+  const editHabit = (habit: Habit) => {
+    setEditingHabit(habit);
+    setNewHabitForm({
+      title: habit.title,
+      description: habit.description,
+      category: habit.category,
+      difficulty: habit.difficulty,
+      goal: habit.goal,
+      notes: habit.notes || '',
+      reminder: habit.reminder || ''
+    });
+    setShowAddHabit(true);
+  };
+
+  const updateHabit = () => {
+    if (!editingHabit || !newHabitForm.title.trim()) return;
+
+    const categoryColor = categories.find(c => c.name === newHabitForm.category)?.color || 'from-gray-400 to-gray-500';
+
+    setHabits(prev => prev.map(habit => 
+      habit.id === editingHabit.id 
+        ? {
+            ...habit,
+            title: newHabitForm.title,
+            description: newHabitForm.description,
+            category: newHabitForm.category,
+            difficulty: newHabitForm.difficulty,
+            goal: newHabitForm.goal,
+            color: categoryColor,
+            notes: newHabitForm.notes,
+            reminder: newHabitForm.reminder
+          }
+        : habit
+    ));
+
+    setEditingHabit(null);
+    setNewHabitForm({
+      title: '',
+      description: '',
+      category: 'Health',
+      difficulty: 'medium',
+      goal: 30,
+      notes: '',
+      reminder: ''
+    });
+    setShowAddHabit(false);
+  };
+
+  const addRecommendedHabit = (rec: Recommendation) => {
+    const categoryColor = categories.find(c => c.name === rec.category)?.color || 'from-gray-400 to-gray-500';
+    
+    const newHabit: Habit = {
+      id: Date.now().toString(),
+      title: rec.title,
+      description: rec.description,
+      category: rec.category,
+      difficulty: rec.difficulty,
+      goal: parseInt(rec.estimatedTime.split(' ')[0]) || 30,
+      color: categoryColor,
+      streak: 0,
+      completed: false,
+      completedDates: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      bestStreak: 0,
+      totalCompletions: 0,
+      notes: rec.personalizedReason
+    };
+
+    setHabits(prev => [...prev, newHabit]);
+  };
+
+  // Show profile setup if needed
+  if (showProfileSetup) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-2xl w-full border border-white/20">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-4">
+              <User className="text-white text-2xl" />
+            </div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+              Welcome to HabitFlow
+            </h2>
+            <p className="text-gray-600 mt-2">Let's set up your profile to get started</p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={userProfile.name}
+                onChange={(e) => setUserProfile(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                placeholder="Enter your full name"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                value={userProfile.email}
+                onChange={(e) => setUserProfile(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                placeholder="Enter your email address"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Preferred Habit Time
+              </label>
+              <input
+                type="time"
+                value={userProfile.preferredTime}
+                onChange={(e) => setUserProfile(prev => ({ ...prev, preferredTime: e.target.value }))}
+                className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={userProfile.notifications}
+                onChange={(e) => setUserProfile(prev => ({ ...prev, notifications: e.target.checked }))}
+                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="text-gray-700">Enable habit reminders and progress notifications</span>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <button
+              className="w-full px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+              onClick={() => {
+                if (!userProfile.name.trim() || !userProfile.email.trim()) {
+                  alert('Please fill in all required fields');
+                  return;
+                }
+                setShowProfileSetup(false);
+                setCurrentPage('landing');
+              }}
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show onboarding assessment if needed
+  if (showOnboarding) {
+    const assessmentQuestions = [
+      {
+        question: "What are your main goals for personal development?",
+        type: "multiple" as const,
+        key: "goals" as keyof Assessment,
+        options: [
+          "Improve productivity", 
+          "Better health habits", 
+          "Learn new skills", 
+          "Reduce stress", 
+          "Career advancement", 
+          "Better relationships",
+          "Financial wellness",
+          "Mental well-being",
+          "Physical fitness",
+          "Work-life balance"
+        ]
+      },
+      {
+        question: "What's your current lifestyle?",
+        type: "single" as const,
+        key: "lifestyle" as keyof Assessment,
+        options: ["Very busy, limited time", "Moderate schedule, some flexibility", "Flexible schedule, plenty of time"]
+      },
+      {
+        question: "What's your profession or role?",
+        type: "single" as const,
+        key: "profession" as keyof Assessment,
+        options: ["Student", "Software Developer", "Manager/Executive", "Healthcare Professional", "Teacher/Educator", "Entrepreneur", "Freelancer", "Retired", "Other"]
+      },
+      {
+        question: "How much time can you dedicate to new habits daily?",
+        type: "single" as const,
+        key: "timeAvailable" as keyof Assessment,
+        options: ["15-30 minutes", "30-60 minutes", "1-2 hours", "2+ hours"]
+      },
+      {
+        question: "What's your typical sleep schedule?",
+        type: "single" as const,
+        key: "sleepSchedule" as keyof Assessment,
+        options: ["Early bird (sleep before 10 PM, wake before 6 AM)", "Normal schedule (sleep 10 PM-12 AM, wake 6-8 AM)", "Night owl (sleep after 12 AM, wake after 8 AM)", "Irregular schedule"]
+      },
+      {
+        question: "What's your work schedule like?",
+        type: "single" as const,
+        key: "workSchedule" as keyof Assessment,
+        options: ["Traditional 9-5", "Flexible hours", "Shift work", "Work from home", "Student schedule", "Irregular/varying"]
+      },
+      {
+        question: "How would you rate your current stress level? (1-10)",
+        type: "scale" as const,
+        key: "stressLevel" as keyof Assessment,
+        min: 1,
+        max: 10,
+        labels: ["Very Low", "Very High"]
+      },
+      {
+        question: "How active are you currently?",
+        type: "single" as const,
+        key: "activityLevel" as keyof Assessment,
+        options: ["Sedentary (little to no exercise)", "Lightly active (light exercise 1-3 days/week)", "Moderately active (moderate exercise 3-5 days/week)", "Very active (hard exercise 6-7 days/week)"]
+      },
+      {
+        question: "Do you have experience with habit tracking?",
+        type: "single" as const,
+        key: "previousExperience" as keyof Assessment,
+        options: ["Complete beginner", "Some experience", "Experienced with habit tracking", "Expert level"]
+      },
+      {
+        question: "What are your biggest challenges in maintaining habits?",
+        type: "multiple" as const,
+        key: "challenges" as keyof Assessment,
+        options: [
+          "Lack of motivation",
+          "Forgetting to do the habit",
+          "Too busy/no time",
+          "Lack of immediate results",
+          "Social pressure/environment",
+          "Perfectionism",
+          "Starting too many habits at once",
+          "Lack of accountability"
+        ]
+      },
+      {
+        question: "When do you prefer to work on personal habits?",
+        type: "multiple" as const,
+        key: "preferredHabitTime" as keyof Assessment,
+        options: ["Early morning", "Mid-morning", "Lunch time", "Afternoon", "Evening", "Before bed", "Flexible/varies"]
+      },
+      {
+        question: "What bad habits would you like to overcome?",
+        type: "text" as const,
+        key: "badHabits" as keyof Assessment,
+        placeholder: "e.g., procrastination, excessive social media, poor sleep schedule, unhealthy eating..."
+      }
+    ];
+
+    const currentQ = assessmentQuestions[assessmentStep];
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-2xl w-full border border-white/20">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-4">
+              <Brain className="text-white text-2xl" />
+            </div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+              Personal Development Assessment
+            </h2>
+            <p className="text-gray-600 mt-2">Step {assessmentStep + 1} of {assessmentQuestions.length}</p>
+          </div>
+
+          <div className="mb-8">
+            <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${((assessmentStep + 1) / assessmentQuestions.length) * 100}%` }}
+              ></div>
+            </div>
+
+            <h3 className="text-xl font-semibold text-gray-800 mb-6">{currentQ.question}</h3>
+
+            {currentQ.type === "multiple" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {currentQ.options?.map((option, index) => {
+                  const isSelected = (assessment[currentQ.key] as string[])?.includes(option);
+                  return (
+                    <button
+                      key={index}
+                      className={`p-4 text-left border-2 rounded-xl transition-all duration-200 ${
+                        isSelected 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                      onClick={() => {
+                        const currentValues = (assessment[currentQ.key] as string[]) || [];
+                        const newValues = isSelected 
+                          ? currentValues.filter(v => v !== option)
+                          : [...currentValues, option];
+                        setAssessment({ ...assessment, [currentQ.key]: newValues });
+                      }}
+                    >
+                      <div className="flex items-center">
+                        <div className={`w-4 h-4 rounded border-2 mr-3 flex items-center justify-center ${
+                          isSelected 
+                            ? 'bg-blue-500 border-blue-500' 
+                            : 'border-gray-300'
+                        }`}>
+                          {isSelected && <CheckCircle className="text-white w-3 h-3" />}
+                        </div>
+                        {option}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {currentQ.type === "single" && (
+              <div className="space-y-3">
+                {currentQ.options?.map((option, index) => {
+                  const isSelected = assessment[currentQ.key] === option;
+                  return (
+                    <button
+                      key={index}
+                      className={`w-full p-4 text-left border-2 rounded-xl transition-all duration-200 ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                      onClick={() => {
+                        setAssessment({ ...assessment, [currentQ.key]: option });
+                      }}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {currentQ.type === "scale" && (
+              <div className="space-y-4">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{currentQ.labels?.[0]}</span>
+                  <span>{currentQ.labels?.[1]}</span>
+                </div>
+                <input
+                  type="range"
+                  min={currentQ.min}
+                  max={currentQ.max}
+                  value={(assessment[currentQ.key] as number) || 5}
+                  onChange={(e) => setAssessment({ ...assessment, [currentQ.key]: parseInt(e.target.value) })}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="text-center">
+                  <span className="text-2xl font-bold text-blue-600">
+                    {(assessment[currentQ.key] as number) || 5}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {currentQ.type === "text" && (
+              <textarea
+                className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
+                rows={4}
+                placeholder={currentQ.placeholder}
+                value={(assessment[currentQ.key] as string) || ''}
+                onChange={(e) => setAssessment({ ...assessment, [currentQ.key]: e.target.value })}
+              />
+            )}
+          </div>
+
+          <div className="flex justify-between">
+            <button
+              className="px-6 py-3 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+              onClick={() => setAssessmentStep(assessmentStep - 1)}
+              disabled={assessmentStep === 0}
+            >
+              Previous
+            </button>
+            <button
+              className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+              onClick={() => {
+                if (assessmentStep === assessmentQuestions.length - 1) {
+                  generateRecommendations(assessment);
+                  setShowOnboarding(false);
+                  setCurrentPage('recommendations');
+                } else {
+                  setAssessmentStep(assessmentStep + 1);
+                }
+              }}
+            >
+              {assessmentStep === assessmentQuestions.length - 1 ? 'Complete Assessment' : 'Next'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const getDayProgress = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const completed = habits.filter(h => h.completedDates.includes(today)).length;
+    const total = habits.length;
+    return { completed, total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 };
+  };
+
+  const getWeekProgress = () => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const today = new Date();
+    
+    return days.map((day, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - today.getDay() + index + 1);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayHabits = habits.filter(h => h.completedDates.includes(dateStr));
+      const totalHabitsOnDay = habits.filter(h => new Date(h.createdAt) <= date).length;
+      
+      return {
+        day,
+        date: dateStr,
+        completed: dayHabits.length === totalHabitsOnDay && totalHabitsOnDay > 0,
+        percentage: totalHabitsOnDay > 0 ? Math.round((dayHabits.length / totalHabitsOnDay) * 100) : 0
+      };
+    });
+  };
+
+  const getFilteredHabits = () => {
+    if (selectedCategory === 'All') return habits;
+    return habits.filter(h => h.category === selectedCategory);
+  };
+
+  const renderDashboard = () => {
+    const progress = getDayProgress();
+    const weekProgress = getWeekProgress();
+    const filteredHabits = getFilteredHabits();
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+        {/* Header */}
+        <div className="bg-white/80 backdrop-blur-xl border-b border-white/20 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                  <Target className="text-white w-6 h-6" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">HabitFlow</h1>
+                  <p className="text-sm text-gray-600">Welcome back, {userProfile.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-full">
+                  <Flame className="w-4 h-4" />
+                  <span className="text-sm font-medium">{userProfile.longestStreak}</span>
+                </div>
+                <div className="flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
+                  <Star className="w-4 h-4" />
+                  <span className="text-sm font-medium">Level {userProfile.level}</span>
+                </div>
+                <button 
+                  onClick={() => setCurrentPage('profile')}
+                  className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+                >
+                  <User className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Stats Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Today's Progress</p>
+                  <p className="text-3xl font-bold text-gray-900">{progress.completed}/{progress.total}</p>
+                  <p className="text-sm text-green-600">{progress.percentage}% complete</p>
+                </div>
+                <div className="w-16 h-16 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full flex items-center justify-center">
+                  <CheckCircle className="text-white w-8 h-8" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Current Streak</p>
+                  <p className="text-3xl font-bold text-gray-900">{userProfile.longestStreak}</p>
+                  <p className="text-sm text-orange-600">days in a row</p>
+                </div>
+                <div className="w-16 h-16 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full flex items-center justify-center">
+                  <Flame className="text-white w-8 h-8" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Habits</p>
+                  <p className="text-3xl font-bold text-gray-900">{userProfile.totalHabits}</p>
+                  <p className="text-sm text-blue-600">actively tracked</p>
+                </div>
+                <div className="w-16 h-16 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full flex items-center justify-center">
+                  <Target className="text-white w-8 h-8" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Level & XP</p>
+                  <p className="text-3xl font-bold text-gray-900">{userProfile.level}</p>
+                  <p className="text-sm text-purple-600">{userProfile.xp} XP earned</p>
+                </div>
+                <div className="w-16 h-16 bg-gradient-to-r from-purple-400 to-violet-500 rounded-full flex items-center justify-center">
+                  <Award className="text-white w-8 h-8" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Week Progress */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">This Week's Progress</h3>
+            <div className="grid grid-cols-7 gap-2">
+              {weekProgress.map((day, index) => (
+                <div key={index} className="text-center">
+                  <p className="text-sm text-gray-600 mb-2">{day.day}</p>
+                  <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center ${
+                    day.completed 
+                      ? 'bg-gradient-to-r from-green-400 to-emerald-500' 
+                      : 'bg-gray-200'
+                  }`}>
+                    {day.completed ? (
+                      <CheckCircle className="text-white w-6 h-6" />
+                    ) : (
+                      <Circle className="text-gray-400 w-6 h-6" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{day.percentage}%</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Category Filter */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setSelectedCategory('All')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                selectedCategory === 'All'
+                  ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white'
+                  : 'bg-white/60 text-gray-600 hover:bg-white/80'
+              }`}
+            >
+              All ({habits.length})
+            </button>
+            {categories.map(category => {
+              const count = habits.filter(h => h.category === category.name).length;
+              return (
+                <button
+                  key={category.name}
+                  onClick={() => setSelectedCategory(category.name)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                    selectedCategory === category.name
+                      ? `bg-gradient-to-r ${category.color} text-white`
+                      : 'bg-white/60 text-gray-600 hover:bg-white/80'
+                  }`}
+                >
+                  <category.icon className="w-4 h-4 inline mr-1" />
+                  {category.name} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Today's Habits */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {selectedCategory === 'All' ? "Today's Habits" : `${selectedCategory} Habits`}
+              </h3>
+              <div className="flex space-x-2">
+                <button 
+                  onClick={() => setCurrentPage('analytics')}
+                  className="bg-white/60 text-gray-600 px-4 py-2 rounded-xl hover:bg-white/80 transition-all duration-200 flex items-center space-x-2"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Analytics</span>
+                </button>
+                <button 
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2"
+                  onClick={() => setShowAddHabit(true)}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Habit</span>
+                </button>
+              </div>
+            </div>
+
+            {filteredHabits.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Target className="w-8 h-8 text-gray-400" />
+                </div>
+                <h4 className="text-lg font-medium text-gray-900 mb-2">No habits yet</h4>
+                <p className="text-gray-600 mb-4">
+                  {selectedCategory === 'All' 
+                    ? "Start building better habits today!" 
+                    : `No ${selectedCategory.toLowerCase()} habits found. Create one to get started!`}
+                </p>
+                <button 
+                  onClick={() => setShowAddHabit(true)}
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200"
+                >
+                  Add Your First Habit
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredHabits.map((habit) => (
+                  <div
+                    key={habit.id}
+                    className="flex items-center space-x-4 p-4 bg-white/60 rounded-xl border border-white/40 hover:bg-white/80 transition-all duration-200"
+                  >
+                    <button
+                      onClick={() => toggleHabit(habit.id)}
+                      className="flex-shrink-0"
+                    >
+                      {habit.completed ? (
+                        <CheckCircle className="text-green-500 w-6 h-6" />
+                      ) : (
+                        <Circle className="text-gray-400 w-6 h-6 hover:text-green-400 transition-colors" />
+                      )}
+                    </button>
+                    
+                    <div className="flex-grow">
+                      <h4 className={`font-medium ${habit.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                        {habit.title}
+                      </h4>
+                      <p className="text-sm text-gray-600">{habit.description}</p>
+                      <div className="flex items-center space-x-4 mt-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${habit.color} text-white`}>
+                          {habit.category}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${difficultyColors[habit.difficulty]}`}>
+                          {habit.difficulty}
+                        </span>
+                        <div className="flex items-center space-x-1">
+                          <Flame className="text-orange-500 w-4 h-4" />
+                          <span className="text-sm text-gray-600">{habit.streak} days</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Clock className="text-blue-500 w-4 h-4" />
+                          <span className="text-sm text-gray-600">{habit.goal} min</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => editHabit(habit)}
+                        className="p-2 text-gray-400 hover:text-blue-500 transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteHabit(habit.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Add Habit Modal */}
+        {showAddHabit && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {editingHabit ? 'Edit Habit' : 'Add New Habit'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowAddHabit(false);
+                    setEditingHabit(null);
+                    setNewHabitForm({
+                      title: '',
+                      description: '',
+                      category: 'Health',
+                      difficulty: 'medium',
+                      goal: 30,
+                      notes: '',
+                      reminder: ''
+                    });
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                  <input
+                    type="text"
+                    value={newHabitForm.title}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, title: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                    placeholder="e.g., Morning Exercise"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <textarea
+                    value={newHabitForm.description}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, description: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
+                    rows={3}
+                    placeholder="Describe your habit..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                  <select
+                    value={newHabitForm.category}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, category: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat.name} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+                  <select
+                    value={newHabitForm.difficulty}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, difficulty: e.target.value as 'easy' | 'medium' | 'hard' })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Goal (minutes)</label>
+                  <input
+                    type="number"
+                    value={newHabitForm.goal}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, goal: parseInt(e.target.value) || 0 })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                    min="1"
+                    max="480"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                  <textarea
+                    value={newHabitForm.notes}
+                    onChange={(e) => setNewHabitForm({ ...newHabitForm, notes: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
+                    rows={2}
+                    placeholder="Any additional notes or motivation..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowAddHabit(false);
+                    setEditingHabit(null);
+                    setNewHabitForm({
+                      title: '',
+                      description: '',
+                      category: 'Health',
+                      difficulty: 'medium',
+                      goal: 30,
+                      notes: '',
+                      reminder: ''
+                    });
+                  }}
+                  className="flex-1 px-4 py-3 text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingHabit ? updateHabit : addHabit}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200"
+                >
+                  {editingHabit ? 'Update' : 'Add'} Habit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Badge Modal */}
+        {showBadgeModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-8 max-w-sm w-full border border-white/20 shadow-2xl text-center">
+              <div className="text-6xl mb-4">{showBadgeModal.icon}</div>
+              <div className={`inline-block px-4 py-2 rounded-full text-white text-sm font-medium mb-4 bg-gradient-to-r ${
+                showBadgeModal.rarity === 'common' ? 'from-gray-400 to-gray-600' :
+                showBadgeModal.rarity === 'rare' ? 'from-blue-400 to-blue-600' :
+                showBadgeModal.rarity === 'epic' ? 'from-purple-400 to-purple-600' :
+                'from-yellow-400 to-yellow-600'
+              }`}>
+                {showBadgeModal.rarity.toUpperCase()}
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">{showBadgeModal.name}</h3>
+              <p className="text-gray-600 mb-6">{showBadgeModal.description}</p>
+              <button
+                onClick={() => setShowBadgeModal(null)}
+                className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200"
+              >
+                Awesome!
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRecommendations = () => {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+        <div className="bg-white/80 backdrop-blur-xl border-b border-white/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <button 
+                onClick={() => setCurrentPage('dashboard')}
+                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
+              >
+                <Home className="w-5 h-5" />
+                <span>Back to Dashboard</span>
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">AI Recommendations</h1>
+              <div></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full mb-4">
+              <Brain className="text-white text-2xl" />
+            </div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+              Personalized Habit Recommendations
+            </h2>
+            <p className="text-gray-600 mt-2">
+              Based on your assessment, here are habits that will help you achieve your goals
+            </p>
+          </div>
+
+          {recommendations.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Brain className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No recommendations yet</h3>
+              <p className="text-gray-600 mb-4">Complete the assessment to get personalized habit recommendations</p>
+              <button 
+                onClick={() => setShowOnboarding(true)}
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200"
+              >
+                Take Assessment
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {recommendations.map((rec) => (
+                <div key={rec.id} className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-grow">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <h3 className="text-xl font-semibold text-gray-900">{rec.title}</h3>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${
+                          categories.find(c => c.name === rec.category)?.color || 'from-gray-400 to-gray-500'
+                        } text-white`}>
+                          {rec.category}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${difficultyColors[rec.difficulty]}`}>
+                          {rec.difficulty}
+                        </span>
+                      </div>
+                      <p className="text-gray-700 mb-3">{rec.description}</p>
+                      
+                      <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r-lg mb-4">
+                        <p className="text-sm text-blue-800">
+                          <strong>Why this works for you:</strong> {rec.personalizedReason || rec.reason}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Benefits:</h4>
+                          <ul className="text-sm text-gray-600 space-y-1">
+                            {rec.benefits.map((benefit, index) => (
+                              <li key={index} className="flex items-center">
+                                <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                                {benefit}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Tips to get started:</h4>
+                          <ul className="text-sm text-gray-600 space-y-1">
+                            {rec.tips.map((tip, index) => (
+                              <li key={index} className="flex items-center">
+                                <Star className="w-4 h-4 text-yellow-500 mr-2" />
+                                {tip}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <p className="text-sm text-gray-600">
+                        <strong>Estimated time:</strong> {rec.estimatedTime}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => addRecommendedHabit(rec)}
+                      className="ml-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Habit</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-8 text-center">
+            <button 
+              onClick={() => setCurrentPage('dashboard')}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              Continue to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProfile = () => {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+        <div className="bg-white/80 backdrop-blur-xl border-b border-white/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <button 
+                onClick={() => setCurrentPage('dashboard')}
+                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
+              >
+                <Home className="w-5 h-5" />
+                <span>Back to Dashboard</span>
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Profile & Settings</h1>
+              <div></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Profile Header */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-lg mb-8">
+            <div className="flex items-center space-x-6">
+              <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                <User className="text-white w-12 h-12" />
+              </div>
+              <div className="flex-grow">
+                <h2 className="text-3xl font-bold text-gray-900">{userProfile.name}</h2>
+                <p className="text-gray-600 mb-2">{userProfile.email}</p>
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2 bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
+                    <Star className="w-4 h-4" />
+                    <span className="text-sm font-medium">Level {userProfile.level}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                    <Award className="w-4 h-4" />
+                    <span className="text-sm font-medium">{userProfile.xp} XP</span>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-green-100 text-green-800 px-3 py-1 rounded-full">
+                    <Calendar className="w-4 h-4" />
+                    <span className="text-sm font-medium">Joined {new Date(userProfile.joinDate).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Management */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Data Management</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button 
+                onClick={exportData}
+                className="flex items-center justify-center space-x-2 p-4 bg-green-50 rounded-xl border border-green-200 hover:bg-green-100 transition-all"
+              >
+                <Download className="w-5 h-5 text-green-600" />
+                <span className="font-medium text-green-900">Export Data</span>
+              </button>
+              <label className="flex items-center justify-center space-x-2 p-4 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-all cursor-pointer">
+                <Upload className="w-5 h-5 text-blue-600" />
+                <span className="font-medium text-blue-900">Import Data</span>
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  onChange={importData} 
+                  className="hidden" 
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Actions</h3>
+            <div className="space-y-4">
+              <button 
+                onClick={() => setShowOnboarding(true)}
+                className="w-full flex items-center justify-between p-4 bg-white/60 rounded-xl border border-white/40 hover:bg-white/80 transition-all"
+              >
+                <div className="flex items-center space-x-3">
+                  <Brain className="w-5 h-5 text-purple-500" />
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900">Retake Assessment</p>
+                    <p className="text-sm text-gray-600">Update your goals and get new recommendations</p>
+                  </div>
+                </div>
+                <Settings className="w-5 h-5 text-gray-400" />
+              </button>
+
+              <button 
+                onClick={() => setCurrentPage('recommendations')}
+                className="w-full flex items-center justify-between p-4 bg-white/60 rounded-xl border border-white/40 hover:bg-white/80 transition-all"
+              >
+                <div className="flex items-center space-x-3">
+                  <Target className="w-5 h-5 text-blue-500" />
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900">View Recommendations</p>
+                    <p className="text-sm text-gray-600">See AI-powered habit suggestions</p>
+                  </div>
+                </div>
+                <Settings className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Determine which component to render
+  switch (currentPage) {
+    case 'dashboard':
+      return renderDashboard();
+    case 'recommendations':
+      return renderRecommendations();
+    case 'profile':
+      return renderProfile();
+    case 'analytics':
+      return renderDashboard(); // For now, redirect to dashboard
+    default:
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+          {/* Hero Section */}
+          <div className="relative overflow-hidden">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-8">
+                  <Target className="text-white text-3xl" />
+                </div>
+                <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-indigo-600 bg-clip-text text-transparent mb-6">
+                  Transform Your Life
+                  <br />
+                  One Habit at a Time
+                </h1>
+                <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+                  Join thousands of students and professionals using AI-powered insights to build lasting habits, 
+                  eliminate bad ones, and achieve their personal development goals.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <button 
+                    onClick={() => setShowOnboarding(true)}
+                    className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-4 rounded-xl text-lg font-medium hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    Start Your Journey
+                  </button>
+                  <button 
+                    onClick={() => setCurrentPage('dashboard')}
+                    className="bg-white/80 backdrop-blur-xl text-gray-800 px-8 py-4 rounded-xl text-lg font-medium hover:bg-white transition-all duration-200 shadow-lg hover:shadow-xl border border-white/20"
+                  >
+                    View Demo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Features Section */}
+          <div className="py-20 bg-white/50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="text-center mb-16">
+                <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                  Everything You Need to Succeed
+                </h2>
+                <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+                  Powered by AI and backed by behavioral science to help you build habits that stick
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {[
+                  {
+                    icon: Brain,
+                    title: "AI-Powered Recommendations",
+                    description: "Get personalized habit suggestions based on your goals, lifestyle, and current patterns."
+                  },
+                  {
+                    icon: TrendingUp,
+                    title: "Progress Tracking",
+                    description: "Visual dashboards and analytics to monitor your progress and celebrate achievements."
+                  },
+                  {
+                    icon: Target,
+                    title: "Goal-Oriented Approach",
+                    description: "Set specific, measurable goals and track your journey with precision and motivation."
+                  },
+                  {
+                    icon: Award,
+                    title: "Achievement System",
+                    description: "Earn badges, maintain streaks, and unlock rewards as you build consistent habits."
+                  },
+                  {
+                    icon: Calendar,
+                    title: "Smart Scheduling",
+                    description: "Intelligent reminders and calendar integration to fit habits into your busy life."
+                  },
+                  {
+                    icon: User,
+                    title: "Personal Assessment",
+                    description: "Comprehensive evaluation of your strengths, weaknesses, and areas for improvement."
+                  }
+                ].map((feature, index) => (
+                  <div key={index} className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-200">
+                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mb-4">
+                      <feature.icon className="text-white w-6 h-6" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{feature.title}</h3>
+                    <p className="text-gray-600">{feature.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="py-20 bg-gradient-to-r from-blue-500 to-indigo-600">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+              <h2 className="text-4xl font-bold text-white mb-6">
+                Ready to Transform Your Life?
+              </h2>
+              <p className="text-xl text-blue-100 mb-8">
+                Join thousands of people who have already started their personal development journey
+              </p>
+              <button 
+                onClick={() => setShowOnboarding(true)}
+                className="bg-white text-blue-600 px-8 py-4 rounded-xl text-lg font-medium hover:bg-gray-50 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                Get Started Free
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+  }
+}
+
+export default App;
