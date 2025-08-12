@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Calendar, Target, TrendingUp, Award, Plus, CheckCircle, Circle, Flame, Brain, Heart, BookOpen, Briefcase, Home, X, Edit, Trash2, Settings, BarChart3, Clock, Star, Save, Download, Upload, Zap, Trophy, ArrowUp, Activity, Lightbulb, Rocket, ChevronRight, Medal, Crown } from 'lucide-react';
+import { User, Calendar, Target, TrendingUp, Award, Plus, CheckCircle, Circle, Flame, Brain, Heart, BookOpen, Briefcase, Home, X, Edit, Trash2, Settings, BarChart3, Clock, Star, Download, Upload, Zap, Trophy, ArrowUp, Activity, Lightbulb, Rocket, ChevronRight, Medal, Crown } from 'lucide-react';
 
 interface Habit {
   id: string;
@@ -156,6 +156,7 @@ function App() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [showBadgeModal, setShowBadgeModal] = useState<Badge | null>(null);
+  const [showActionModal, setShowActionModal] = useState<ProgressInsight | null>(null);
   const [progressInsights, setProgressInsights] = useState<ProgressInsight[]>([]);
   const [personalMetrics, setPersonalMetrics] = useState<PersonalMetrics>({
     weeklyGrowth: 0,
@@ -298,9 +299,6 @@ function App() {
 
   const generateProgressInsights = () => {
     const insights: ProgressInsight[] = [];
-    const today = new Date();
-    const streaks = habits.map(h => h.streak).filter(s => s > 0);
-    const avgStreak = streaks.length > 0 ? Math.round(streaks.reduce((a, b) => a + b, 0) / streaks.length) : 0;
 
     // Achievement insights
     if (userProfile.longestStreak >= 7) {
@@ -345,6 +343,33 @@ function App() {
       });
     }
 
+    // Add more actionable suggestions
+    if (habits.length < 3) {
+      insights.push({
+        id: 'add-more-habits',
+        type: 'suggestion',
+        title: 'Expand Your Growth',
+        description: 'Building multiple complementary habits creates a powerful transformation system.',
+        value: `${habits.length} habits`,
+        icon: '🚀',
+        color: 'from-purple-500 to-pink-500',
+        actionable: true
+      });
+    }
+
+    if (userProfile.completedToday === 0 && habits.length > 0) {
+      insights.push({
+        id: 'start-today',
+        type: 'suggestion',
+        title: 'Start Your Day Right',
+        description: 'Every expert was once a beginner. Take the first step today!',
+        value: '0 completed',
+        icon: '⭐',
+        color: 'from-yellow-500 to-orange-500',
+        actionable: true
+      });
+    }
+
     // Milestone insights
     if (userProfile.totalHabits >= 5 && userProfile.level >= 3) {
       insights.push({
@@ -360,6 +385,164 @@ function App() {
     }
 
     setProgressInsights(insights.slice(0, 3)); // Show top 3 insights
+  };
+
+  const handleTakeAction = (insight: ProgressInsight) => {
+    setShowActionModal(insight);
+  };
+
+  const getActionSuggestions = (insight: ProgressInsight) => {
+    switch (insight.id) {
+      case 'consistency-suggestion':
+        return {
+          title: 'Boost Your Consistency - Action Plan',
+          actions: [
+            {
+              title: 'Start with 5-minute habits',
+              description: 'Break down your current habits into smaller, easier actions',
+              action: () => {
+                setNewHabitForm({
+                  title: '5-Minute Morning Stretch',
+                  description: 'Simple stretching routine to start the day',
+                  category: 'Health',
+                  difficulty: 'easy',
+                  goal: 5,
+                  notes: 'Focus on consistency over perfection',
+                  reminder: ''
+                });
+                setShowAddHabit(true);
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Set up habit reminders',
+              description: 'Use phone notifications or visual cues to remember your habits',
+              action: () => {
+                alert('💡 Tip: Set phone alarms for each habit time and place visual reminders where you\'ll see them!');
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Track in a visible place',
+              description: 'Put a habit tracker where you\'ll see it daily',
+              action: () => {
+                setCurrentPage('dashboard');
+                setShowActionModal(null);
+              }
+            }
+          ]
+        };
+      
+      case 'add-more-habits':
+        return {
+          title: 'Expand Your Growth - Recommended Habits',
+          actions: [
+            {
+              title: 'Add a morning routine habit',
+              description: 'Start your day with intention and energy',
+              action: () => {
+                setNewHabitForm({
+                  title: 'Morning Energizer Routine',
+                  description: 'Drink water, stretch, and set daily intention',
+                  category: 'Health',
+                  difficulty: 'easy',
+                  goal: 15,
+                  notes: 'The foundation of a productive day',
+                  reminder: ''
+                });
+                setShowAddHabit(true);
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Add a learning habit',
+              description: 'Continuous learning accelerates personal growth',
+              action: () => {
+                setNewHabitForm({
+                  title: 'Daily Learning Session',
+                  description: 'Read, watch educational content, or practice a skill',
+                  category: 'Learning',
+                  difficulty: 'medium',
+                  goal: 20,
+                  notes: 'Invest in yourself every day',
+                  reminder: ''
+                });
+                setShowAddHabit(true);
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Add a mindfulness habit',
+              description: 'Reduce stress and increase self-awareness',
+              action: () => {
+                setNewHabitForm({
+                  title: 'Mindful Moment',
+                  description: 'Practice meditation, deep breathing, or gratitude',
+                  category: 'Mindfulness',
+                  difficulty: 'easy',
+                  goal: 10,
+                  notes: 'Peace of mind is the ultimate wealth',
+                  reminder: ''
+                });
+                setShowAddHabit(true);
+                setShowActionModal(null);
+              }
+            }
+          ]
+        };
+
+      case 'start-today':
+        return {
+          title: 'Start Your Day Right - Quick Wins',
+          actions: [
+            {
+              title: 'Complete your easiest habit first',
+              description: 'Build momentum with a quick win',
+              action: () => {
+                const easiestHabit = habits.find(h => h.difficulty === 'easy') || habits[0];
+                if (easiestHabit) {
+                  toggleHabit(easiestHabit.id);
+                  alert(`🎉 Great start! You completed "${easiestHabit.title}". Momentum is building!`);
+                }
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Set a 2-minute timer',
+              description: 'Commit to just 2 minutes of any habit',
+              action: () => {
+                alert('⏰ Set a 2-minute timer right now and do ANY habit for just 2 minutes. You\'ve got this!');
+                setShowActionModal(null);
+              }
+            },
+            {
+              title: 'Plan your ideal day',
+              description: 'Schedule when you\'ll do each habit today',
+              action: () => {
+                const now = new Date();
+                const timeSlots = habits.map((habit, index) => {
+                  const time = new Date(now.getTime() + (index + 1) * 60 * 60 * 1000);
+                  return `${time.getHours()}:${time.getMinutes().toString().padStart(2, '0')} - ${habit.title}`;
+                }).join('\n');
+                alert(`📅 Your habit schedule for today:\n\n${timeSlots}\n\nSet these times in your calendar!`);
+                setShowActionModal(null);
+              }
+            }
+          ]
+        };
+
+      default:
+        return {
+          title: 'Take Action',
+          actions: [
+            {
+              title: 'Continue building habits',
+              description: 'Keep up the great work!',
+              action: () => setShowActionModal(null)
+            }
+          ]
+        };
+    }
   };
 
   const checkForNewBadges = () => {
@@ -1146,7 +1329,10 @@ function App() {
                         )}
                       </div>
                       {insight.actionable && (
-                        <button className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
+                        <button 
+                          onClick={() => handleTakeAction(insight)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
+                        >
                           Take Action <ChevronRight className="w-4 h-4 ml-1" />
                         </button>
                       )}
@@ -1556,6 +1742,50 @@ function App() {
               >
                 Awesome!
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Action Modal */}
+        {showActionModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-8 max-w-lg w-full border border-white/20 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-12 h-12 bg-gradient-to-r ${showActionModal.color} rounded-full flex items-center justify-center text-2xl`}>
+                    {showActionModal.icon}
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900">{getActionSuggestions(showActionModal).title}</h3>
+                </div>
+                <button
+                  onClick={() => setShowActionModal(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {getActionSuggestions(showActionModal).actions.map((action, index) => (
+                  <div key={index} className="bg-white/60 rounded-xl p-4 border border-white/40 hover:bg-white/80 transition-all">
+                    <h4 className="font-semibold text-gray-900 mb-2">{action.title}</h4>
+                    <p className="text-gray-600 text-sm mb-3">{action.description}</p>
+                    <button
+                      onClick={action.action}
+                      className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 font-medium"
+                    >
+                      {action.title}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+                <p className="text-sm text-gray-700 text-center">
+                  <strong>💡 Remember:</strong> Small consistent actions lead to extraordinary results. 
+                  Every expert was once a beginner who never gave up!
+                </p>
+              </div>
             </div>
           </div>
         )}
